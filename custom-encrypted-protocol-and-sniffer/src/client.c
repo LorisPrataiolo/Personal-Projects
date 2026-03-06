@@ -18,15 +18,42 @@ int parse_port(const char *);
 
 int main(int argc, char  *argv[]) {
 
+    struct in_addr server_addr;
+    struct sockaddr_in server;
+
+
+    // Sanity check of program arguments
     check_main_arg(argc, argv);
 
-    struct in_addr server_addr;
     if (parse_ipv4addr(argv[1], &server_addr))
         printf ("Server IP address: valid\n");
 
     int port =  parse_port(argv[2]);
     printf("Port: valid\n");
 
+
+    // Create Socket
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(sockfd == -1)
+        fail_errno("Creation socket failed");
+
+    
+    // Converting server port to network format
+    memset(&server, 0, sizeof(server));
+
+    server.sin_family = AF_INET;
+    server.sin_addr   = server_addr;
+    server.sin_port   = htons(port);
+    
+    // Start Client-Server connection
+    int status_connection = connect(sockfd, (struct sockaddr*)&server, sizeof(server));
+    if(status_connection == -1)
+        fail_errno("Server connection failed");
+    else
+        printf("Client connected!\n (status:%d) \n", status_connection);
+    
+    
+    // Run client
 
 return 0;
 }
@@ -50,7 +77,7 @@ void check_main_arg (int argc, char  *argv[]){
 }
 
 int parse_ipv4addr(char*ip, struct in_addr *addr){
-    int res = inet_pton(AF_INET, ip, &addr);
+    int res = inet_pton(AF_INET, ip, addr);
 
     if (res == 0) 
         fail("Invalid IPv4 address");
