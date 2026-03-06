@@ -1,0 +1,9 @@
+# Custom Encrypted Protocol and Siniffer
+
+## Abstract
+
+This project has as base a client-server application (C/C++) that communicates through a custom encrypted protocol. The heart of this project is the sniffer script (Python) that acts as passive Eavesdropper. Its role is "listening"  the traffic flowing through the protocol without the Client or Server knowing it's there.
+
+## 📚 Sources
+
+- [socket-programming-simple-server-and-client](https://github.com/kusdavletov/socket-programming-simple-server-and-client)
