@@ -1,25 +1,13 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/errno.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#include "encripted_protocol_and_sniffer.h"
 
 
-
-void fail_errno(const char * const  );
-void fail (const char * const  );
-void check_main_arg (int , char  *[]);
-int parse_ipv4addr(char *, struct in_addr *);
-int parse_port(const char *);
-
-
-/* ================================================================== */
 
 int main(int argc, char  *argv[]) {
 
     struct in_addr server_addr;
     struct sockaddr_in server;
+    char buffer [256];
+    int bytes_written;
 
 
     // Sanity check of program arguments
@@ -46,14 +34,38 @@ int main(int argc, char  *argv[]) {
     server.sin_port   = htons(port);
     
     // Start Client-Server connection
-    int status_connection = connect(sockfd, (struct sockaddr*)&server, sizeof(server));
-    if(status_connection == -1)
+    if(connect(sockfd, (struct sockaddr*)&server, sizeof(server)) == -1)
         fail_errno("Server connection failed");
-    else
-        printf("Client connected!\n (status:%d) \n", status_connection);
+
+    printf("Client connected!\n");
     
     
     // Run client
+    while (1)
+    {
+        printf("Write the message do you want to send\n>>>");
+        bzero(buffer,256);
+        scanf("%s",buffer);
+
+        bytes_written = write(sockfd, buffer, strlen(buffer));
+        if (bytes_written < 0)
+            fail_errno("Sending massage failed:");
+        
+        
+        bzero(buffer,256); // reset the buffer
+        if(read(sockfd, buffer, 256) == -1)
+            fail_errno("Error server's response reading:");
+
+        printf("Server response:%s\n", buffer);
+
+        // escape
+        if (bcmp(buffer, "quit", 4) == 0)
+            break;
+
+    }
+
+    printf("Comunnication stopped");
+    
 
 return 0;
 }
@@ -61,32 +73,12 @@ return 0;
 
 
 /* ================================================================== */
-void fail_errno(const char * const msg ) {
-    perror(msg);
-    exit(EXIT_FAILURE);
-}
-
-void fail(const char * const msg) {
-    fprintf(stderr, "%s\n",msg);
-    exit(EXIT_FAILURE);
-}
 
 void check_main_arg (int argc, char  *argv[]){
     if (argc != 3) 
         fail("Usage: ./client <IPv4 address> <number port>");
 }
 
-int parse_ipv4addr(char*ip, struct in_addr *addr){
-    int res = inet_pton(AF_INET, ip, addr);
-
-    if (res == 0) 
-        fail("Invalid IPv4 address");
-    
-    if (res ==  - 1)
-        fail_errno("Invalid IPv4 address");
-
-  return res;
-}
 
 int parse_port(const char *port_str)
 {
