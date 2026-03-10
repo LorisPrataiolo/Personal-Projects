@@ -11,102 +11,108 @@ struct Linesh_TCP {
     uint16_t rec_seq;
 };
 
-int main(int argc, char  *argv[]) {
+/// PORTS FOR COMMUNICATION (7777 -> CLIENT) AND (8080 -> SERVER)
+int CLIENT_PORT = 7777;
+int SERVER_PORT = 8080;
 
-    struct in_addr server_addr;
-    struct sockaddr_in server;
-    char buffer [256];
-    int bytes_written, raw_sockfd;
-
-
-    // Sanity check of program arguments
-    check_main_arg(argc, argv);
-
-    if (parse_ipv4addr(argv[1], &server_addr))
-        printf ("Server IP address: valid\n");
-
-    int port =  parse_port(argv[2]);
-    printf("Port: valid\n");
-
-
-
-    // Create Socket
-    raw_sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
-    if(raw_sockfd == -1)
-        fail_errno("Creation socket failed");
-
-    
-    // Converting server port to network format
-    memset(&server, 0, sizeof(server));
-
-    server.sin_family = AF_INET;
-    server.sin_addr   = server_addr;
-    server.sin_port   = htons(port);
-    
-    // Start Client-Server connection
-    if(connect(raw_sockfd, (struct sockaddr*)&server, sizeof(server)) == -1)
-        fail_errno("Server connection failed");
-
-    printf("Client connected!\n");
-    
-    
-    // Run client
-    while (1)
-    {
-        printf("Write the message do you want to send\n>>>");
-        bzero(buffer,256);
-        scanf("%s",buffer);
-
-        bytes_written = write(raw_sockfd, buffer, strlen(buffer));
-        if (bytes_written < 0)
-            fail_errno("Sending massage failed:");
-        
-        
-        bzero(buffer,256); // reset the buffer
-        if(read(raw_sockfd, buffer, 256) == -1)
-            fail_errno("Error server's response reading:");
-
-        printf("Server response:%s\n", buffer);
-        
-        // escape
-        buffer[strcspn(buffer, "\r\n")] = 0;
-        if (strncmp(buffer, "quit", 4) == 0)
-            break;
-
-    }
-
-    printf("Comunnication stopped");
-    
-
-return 0;
-}
-
-
-
-/* ================================================================== */
-
-void check_main_arg (int argc, char  *argv[]){
-    if (argc != 3) 
-        fail("Usage: ./client <IPv4 address> <number port>");
-}
-
-
-int parse_port(const char *port_str)
+int linesh_connect(int sfd,struct sockaddr* addr,ssize_t sz)
 {
-    char *endptr;
-    errno = 0;
+	struct Linesh_TCP *request;
+    int sz1;
 
-    long port = strtol(port_str, &endptr, 10);
+    // while the connection is not accepted
+	while(1)
+	{
+        // prepare and send the request of connection to server through coustom tcp protocol
+		request = (struct Linesh_TCP*)malloc(sizeof(struct Linesh_TCP));
+		memset(request,0,sizeof(request));
+		request->source = CLIENT_PORT;
+		request->dest = SERVER_PORT;
+		request->connect_req = 1;
+		request->seq = 5;
+		request->rec_seq = 0;
+		request->final_acknow = 0;
 
-    if (errno != 0)
-        fail_errno("strtol");
+		sendto(sfd,request,sizeof(request),0,addr,sz);
+		char buffer[1000];
 
-    if (*endptr != '\0')
-        fail("Port must be numeric");
+        // check the ack from server
+		if(recvfrom(sfd,buffer,1000,0,addr,&sz1)>=0){
+			printf("Conection was accepted by the server\n");
+        }
 
-    if (port < 1 || port > 65535)
-        fail("Port must be between 1 and 65535");
 
-    return (int)port;
+		struct iphdr* ip;
+		ip = (struct iphdr*)buffer;
+
+		request = (struct Linesh_TCP*)(buffer+(ip->ihl*4));
+        printf("Connection Accepted Flag : %d\n",request->connect_acc);
+
+        // check if the connection is accepted
+		if(request->connect_acc==1)
+			break;
+	}
+
+    // send final ACK to server
+	printf("Continue \n");
+	request = (struct Linesh_TCP*)malloc(sizeof(struct Linesh_TCP));
+	memset(request,0,sizeof(request));
+	request->source = CLIENT_PORT;
+	request->dest = SERVER_PORT;
+	request->connect_req = 0;
+	request->seq = 5;
+	request->rec_seq = 0;
+	request->final_acknow = 1;
+	if(sendto(sfd,request,sizeof(request),0,addr,sz1)>=0)
+    {
+		printf("Sent the Final acknowledge Flag\n");
+    }
+	return 1;
 }
 
+int custom_msg(int sfd,char *buffer,int bufsiz,struct sockaddr* addr,ssize_t sz)
+{
+	char msg[1000];
+	struct Linesh_TCP *buff;
+	buff = (struct Linesh_TCP*)(msg);
+	memset(buff,0,sizeof(buff));
+
+    //Defining the fields
+	buff->source = CLIENT_PORT;
+	buff->dest = SERVER_PORT;
+	buff->connect_req = 0;
+	buff->connect_acc = 0;
+	buff->seq = 0;
+	buff->rec_seq = 0;
+	buff->final_acknow =0;
+	buff->data_flg = 1;
+	memcpy(msg+sizeof(*buff),buffer,bufsiz);
+	sendto(sfd,msg,1000,0,addr,sz);
+}
+
+
+int main()
+{
+    // initialization: client and server socket addresses
+    int sfd = socket(AF_INET,SOCK_RAW,253);
+	struct sockaddr_in client_addr;
+	memset(&client_addr,0,sizeof(client_addr));
+	client_addr.sin_family = AF_INET;
+	client_addr.sin_addr.s_addr = inet_addr("127.0.0.2");
+
+
+	struct sockaddr_in server_addr;
+	memset(&server_addr,0,sizeof(server_addr));
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_addr.s_addr = inet_addr("127.0.0.7");
+
+
+	bind(sfd,(struct sockaddr*)&client_addr,sizeof(client_addr)); // bind the client port
+	linesh_connect(sfd,(struct sockaddr*)&server_addr,sizeof(server_addr)); 
+
+    // send message to server
+	char buffer[100] = "Linesh 21CSB0A35";
+	custom_msg(sfd,buffer,strlen(buffer),(struct sockaddr*)&server_addr,sizeof(server_addr));
+	return 0;
+
+}
