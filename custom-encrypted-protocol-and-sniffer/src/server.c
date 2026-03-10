@@ -58,8 +58,10 @@ int main()
         
     
 
+        
         // escape
-        if (bcmp(buffer, "quit", 4))
+        buffer[strcspn(buffer, "\r\n")] = 0;
+        if (strncmp(buffer, "quit",5) == 0)
             break;
 
     }

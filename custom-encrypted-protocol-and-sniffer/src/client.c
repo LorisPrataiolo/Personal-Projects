@@ -1,13 +1,22 @@
 #include "encripted_protocol_and_sniffer.h"
 
-
+struct Linesh_TCP {
+    uint16_t source;
+    uint16_t dest;
+    uint8_t  connect_req;
+    uint8_t  connect_acc;
+    uint8_t  final_acknow;
+    uint8_t  data_flg;
+    uint16_t seq;
+    uint16_t rec_seq;
+};
 
 int main(int argc, char  *argv[]) {
 
     struct in_addr server_addr;
     struct sockaddr_in server;
     char buffer [256];
-    int bytes_written;
+    int bytes_written, raw_sockfd;
 
 
     // Sanity check of program arguments
@@ -20,9 +29,10 @@ int main(int argc, char  *argv[]) {
     printf("Port: valid\n");
 
 
+
     // Create Socket
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if(sockfd == -1)
+    raw_sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    if(raw_sockfd == -1)
         fail_errno("Creation socket failed");
 
     
@@ -34,7 +44,7 @@ int main(int argc, char  *argv[]) {
     server.sin_port   = htons(port);
     
     // Start Client-Server connection
-    if(connect(sockfd, (struct sockaddr*)&server, sizeof(server)) == -1)
+    if(connect(raw_sockfd, (struct sockaddr*)&server, sizeof(server)) == -1)
         fail_errno("Server connection failed");
 
     printf("Client connected!\n");
@@ -47,19 +57,20 @@ int main(int argc, char  *argv[]) {
         bzero(buffer,256);
         scanf("%s",buffer);
 
-        bytes_written = write(sockfd, buffer, strlen(buffer));
+        bytes_written = write(raw_sockfd, buffer, strlen(buffer));
         if (bytes_written < 0)
             fail_errno("Sending massage failed:");
         
         
         bzero(buffer,256); // reset the buffer
-        if(read(sockfd, buffer, 256) == -1)
+        if(read(raw_sockfd, buffer, 256) == -1)
             fail_errno("Error server's response reading:");
 
         printf("Server response:%s\n", buffer);
-
+        
         // escape
-        if (bcmp(buffer, "quit", 4) == 0)
+        buffer[strcspn(buffer, "\r\n")] = 0;
+        if (strncmp(buffer, "quit", 4) == 0)
             break;
 
     }
