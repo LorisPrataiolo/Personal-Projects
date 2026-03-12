@@ -30,10 +30,12 @@ int get_tcp_segment(int socketfd, char* buffer_to_store_sgmnt,  int buflen,  str
     int total_bytes_recived = recvfrom(socketfd, buffer_to_store_sgmnt, buflen, 0, cli_addr, clilen );
     
     if (total_bytes_recived == -1){
+        close(socketfd);
         fail_errno("Recieving process failed:");
     }   
     else if (total_bytes_recived == 0)
     {
+        close(socketfd);
         fail("Connection may be close. Recieve process failed");
     }
 
@@ -80,6 +82,8 @@ int linesh_receive(int socketfd, char*buffer_to_store_msg, int buflen, struct so
     return payload_size;
 }
 
+
+
 /* Method that prepare the segments' linesh header. */
 void prepare_linesh_header(struct Linesh_TCP* linesh_reply,
     uint16_t source, 
@@ -97,10 +101,17 @@ void prepare_linesh_header(struct Linesh_TCP* linesh_reply,
     linesh_reply->connect_acc  = connect_acc;
     linesh_reply->final_acknow = final_acknow;
     linesh_reply->data_flg     = data_flg;
+    linesh_reply->seq          = seq;
     linesh_reply->rec_seq      = rec_seq;
 }
 
+int check_seq(const uint16_t rec_seq, const uint16_t expected_seq)
+{
+    if(rec_seq != expected_seq)
+        return -1;
 
+return 1;
+}
 
 
 /* This method process the 3-way-handshake for linesh tcp protocol. */
@@ -110,6 +121,7 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
     struct Linesh_TCP * incoming_request;
     struct Linesh_TCP outgoing_reply;
     char recieve_buffer[buff_segment_length];
+    uint16_t server_seq, cli_seq;
 
     int segment_size = get_tcp_segment(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
 
@@ -118,11 +130,16 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
     int ip_offset = ip_header->ip_hl *4;
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
 
+    // get sequence from cli
+    cli_seq =  incoming_request->seq + 1;
+    server_seq = (uint16_t)rand(); // look at README for a more stable and secure library. For this project its fine
+
     // Accept the connection with client -> send ACK to the client
     if(incoming_request->connect_req == 1){
-        prepare_linesh_header(&outgoing_reply, SERVER_PORT, CLIENT_PORT, 0, 1, 0, 0, 0, 0);
+        prepare_linesh_header(&outgoing_reply, SERVER_PORT, CLIENT_PORT, 0, 1, 0, 0, server_seq, cli_seq);
 
-        if (sendto(socketfd, &outgoing_reply, sizeof(struct Linesh_TCP),  0, cli_addr, clilen) == -1){
+        if (sendto(socketfd, &outgoing_reply, sizeof(struct Linesh_TCP),  0, cli_addr, *clilen) == -1){
+            close(socketfd);
             fail_errno("Reply submission faled:");
         }
     }
@@ -131,17 +148,38 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
     // Recieve the final ACK
     memset(recieve_buffer,0, sizeof(struct Linesh_TCP)); // clear the recieve buffer
 
-    segment_size = get_tcp_segment(socketfd,  recieve_buffer, buff_segment_length, cli_addr, *clilen);
+    segment_size = get_tcp_segment(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
 
     ip_header = (struct ip*) recieve_buffer;
     ip_offset = ip_header->ip_hl *4;
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
+    
 
+    // check if the sequences corresponds
+    if (check_seq(incoming_request->seq, cli_seq) == -1 ||  check_seq(incoming_request->rec_seq, server_seq + 1) == -1){
+        fail("Sequences do not corresponds");
+    }
+    
+    // check the final ack
     if(incoming_request->final_acknow != 1){
         fprintf(stderr, "Final ACK: %d\n", incoming_request->final_acknow);
         fail("Error with Final ACK");
     }
 
 return 1;
+}
+
+
+int linesh_send(int socketfd, const char *msg_payload, int payload_length, struct sockaddr* dest_addr, socklen_t dest_len, uint16_t current_seq, uint16_t current_rec_seq)
+{
+    int total_packet_size = sizeof(struct Linesh_TCP) + payload_length;
+    struct Linesh_TCP outgoing_header;
+
+    char * packet_buffer[total_packet_size];
+    memset(packet_buffer, 0 ,total_packet_size);
+
+    prepare_linesh_header(&outgoing_header, SERVER_PORT, CLIENT_PORT, 0, 0, 0, 1, current_seq, current_rec_seq);
+
+    // DA COMPLETARE
 
 }
