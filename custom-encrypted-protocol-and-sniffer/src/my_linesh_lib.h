@@ -1,9 +1,15 @@
+#define DEFAULT_SOURCE // this force to use BSD structure so that we can use ip structure instaed iphr 
+#define _BSD_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>    
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>   
 #include <netinet/ip.h>
+#include "my_fail_lib.h"
 #include "my_fail_lib.h"
 
 # define MAX_BUFFER_LENGTH 15000 // bytes
