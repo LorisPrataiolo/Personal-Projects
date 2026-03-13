@@ -114,14 +114,14 @@ return 1;
 }
 
 
-/* This method process the 3-way-handshake for linesh tcp protocol. */
-int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* cli_addr, socklen_t* clilen)
+/* This method process the 3-way-handshake for linesh tcp protocol. Returns 1 in case of success otherwise faild automatically.
+An other feature of this method is that stores the last client and server sequences in to input variables */
+int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* cli_addr, socklen_t* clilen, uint16_t* server_seq, uint16_t* cli_seq)
 {
     struct ip* ip_header;
     struct Linesh_TCP * incoming_request;
     struct Linesh_TCP outgoing_reply;
     char recieve_buffer[buff_segment_length];
-    uint16_t server_seq, cli_seq;
 
     int segment_size = get_tcp_segment(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
 
@@ -131,12 +131,12 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
 
     // get sequence from cli
-    cli_seq =  incoming_request->seq + 1;
-    server_seq = (uint16_t)rand(); // look at README for a more stable and secure library. For this project its fine
+    *cli_seq =  incoming_request->seq + 1;
+    *server_seq = (uint16_t)rand();
 
-    // Accept the connection with client -> send ACK to the client
+    // Accept the connection with client -> send ACK to the client -----------------
     if(incoming_request->connect_req == 1){
-        prepare_linesh_header(&outgoing_reply, SERVER_PORT, CLIENT_PORT, 0, 1, 0, 0, server_seq, cli_seq);
+        prepare_linesh_header(&outgoing_reply, SERVER_PORT, CLIENT_PORT, 0, 1, 0, 0, *server_seq, *cli_seq);
 
         if (sendto(socketfd, &outgoing_reply, sizeof(struct Linesh_TCP),  0, cli_addr, *clilen) == -1){
             close(socketfd);
@@ -145,7 +145,7 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
     }
 
     
-    // Recieve the final ACK
+    // Recieve the final ACK -------------------------------------------------------
     memset(recieve_buffer,0, sizeof(struct Linesh_TCP)); // clear the recieve buffer
 
     segment_size = get_tcp_segment(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
@@ -153,10 +153,10 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
     ip_header = (struct ip*) recieve_buffer;
     ip_offset = ip_header->ip_hl *4;
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
-    
+    (*server_seq)++;
 
     // check if the sequences corresponds
-    if (check_seq(incoming_request->seq, cli_seq) == -1 ||  check_seq(incoming_request->rec_seq, server_seq + 1) == -1){
+    if (check_seq(incoming_request->seq, *cli_seq) == -1 ||  check_seq(incoming_request->rec_seq, *server_seq) == -1){
         fail("Sequences do not corresponds");
     }
     
@@ -169,17 +169,23 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
 return 1;
 }
 
-
+/* This method send a package/segment that includes a payload of chars.*/
 int linesh_send(int socketfd, const char *msg_payload, int payload_length, struct sockaddr* dest_addr, socklen_t dest_len, uint16_t current_seq, uint16_t current_rec_seq)
 {
     int total_packet_size = sizeof(struct Linesh_TCP) + payload_length;
     struct Linesh_TCP outgoing_header;
 
-    char * packet_buffer[total_packet_size];
+    char packet_buffer[total_packet_size];
     memset(packet_buffer, 0 ,total_packet_size);
 
     prepare_linesh_header(&outgoing_header, SERVER_PORT, CLIENT_PORT, 0, 0, 0, 1, current_seq, current_rec_seq);
+    memcpy(packet_buffer, &outgoing_header, sizeof(struct Linesh_TCP)); // put the header at the buffer beginning
+    memcpy(packet_buffer + sizeof(struct Linesh_TCP), msg_payload, payload_length); // put the payload immediatly after the header
 
-    // DA COMPLETARE
+    if (sendto(socketfd, packet_buffer, total_packet_size,  0, dest_addr, dest_len) == -1){
+        close(socketfd);
+        fail_errno("Reply submission faled:");
+    }
 
+return 1;
 }
