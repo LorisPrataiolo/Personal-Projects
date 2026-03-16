@@ -1,19 +1,41 @@
 # Custom Encrypted Protocol and Siniffer
 
+*Unfinished*
+
 ## Abstract
 
 This project has as base a client-server application (C/C++) that communicates through a custom encrypted protocol. The heart of this project is the sniffer script (Python) that acts as passive Eavesdropper. Its role is "listening"  the traffic flowing through the protocol without the Client or Server knowing it's there.
 
-## Custom Encrypted protocol
+## 📁 Project Structure
 
-The Custom Encrypted Protocl through which Client and server will comunicates, its building as TCP like.
+- `my_linesh_lib.h`  - The core protocol library containing packet assembly (linesh_send), payload extraction (linesh_receive), and handshake logic.
+
+- `my_fail_lib.h` - A robust, POSIX-compliant error-handling library using include guards and inline functions.
+
+- `server_main.c` - The server implementation that binds to a port, listens for custom protocol packets, and echoes responses.
+
+- `client_main.c` - The client implementation that initiates the handshake and provides an interactive terminal chat interface.
+
+- `sniffer.py` - The evensdropper implementation that "listen" the comunication between client and server. 
+
+## Linesh Protocol
+
+A fully custom, reliable transport-layer protocol implemented in C from the ground up using Raw Sockets.
+
+This project-section bypasses standard OS TCP/UDP implementations to manually construct, parse, and transmit custom packet headers. It features a complete 3-Way Handshake, dynamic sequence number tracking, and bidirectional data transmission.
 
 ### Key Concepts
 
-- **Raw Sockets**: raw sockets provide low-level access to network layers, allowing you to craft custom headers.`socket (AF_INET, SOCK_RAW, IPPROTO_TCP);`
+- **Raw Sockets**: raw sockets provide low-level access to network layers, allowing you to craft custom headers.`socket (AF_INET, SOCK_RAW, 150);`
 - **Custom Protocol design**: `Linesh_TCP` is a simplified version of the TCP protocol, with fields for connection requests, acknowledgments, and data transmission.
 
-### `Linesh_TCP` structure
+> **Why 150 and not `IPPROTO_RAW` ?**
+>
+> When you use `IPPROTO_RAW`, you trigger a special mode in the OS kernel. So that the  Kernel is expecting an IPv4 Header to be the very first thing in that memory buffer. But since we are using a custom TCP protocol this generate a sort of inconsistency. So we have to pick up a unassigned protocol number.
+
+### `Linesh_TCP` Header
+
+The protocol is driven by a custom header injected between the standard **IPv4 header** and the message payload
 
 ```c
 struct Linesh_TCP {
@@ -37,7 +59,10 @@ struct Linesh_TCP {
 
 ![alt text](client_server_comunication_schema.png)
 
-The **server listens** for connection requests and processes incoming messages using `linesh_accept` and `custom_receive`.
+
+## Bugs
+
+At the moment, the protocol mechanism is infected by Loopback echo. This phenomenon (that to be honest i didn't see anything on internet, this name comes from gemni pro) has the follow conseguences: When a sender sends his protocol package, and the follow step is listen the response, can happening that the sender re-takes his hown message back as response from his destinator. This as you can immagine generate a big problem during the comunication.
 
 ## 📚 Sources
 
