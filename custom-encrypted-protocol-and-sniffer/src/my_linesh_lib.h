@@ -30,10 +30,14 @@ int SERVER_PORT = 8080;
 
 /* Load the entire segment into buffer_to_store_sgmnt, and return the number of bytes recived.
 Fail if the number of bytes is 0 or -1 (for more information look recvfrom method).*/
-int get_tcp_segment(int socketfd, char* buffer_to_store_sgmnt,  int buflen,  struct  sockaddr* cli_addr, socklen_t *  clilen)
+int get_tcp_packet(int socketfd, 
+    char* buffer_to_store_sgmnt,  
+    int buflen,  
+    struct  sockaddr* source_addr, 
+    socklen_t *  source_len)
 {
 
-    int total_bytes_recived = recvfrom(socketfd, buffer_to_store_sgmnt, buflen, 0, cli_addr, clilen );
+    int total_bytes_recived = recvfrom(socketfd, buffer_to_store_sgmnt, buflen, 0, source_addr, source_len );
     
     if (total_bytes_recived == -1){
         close(socketfd);
@@ -52,7 +56,7 @@ int get_tcp_segment(int socketfd, char* buffer_to_store_sgmnt,  int buflen,  str
 
 /* Extract from the custom TCP segment the actual payload. Load it into `buf_payload` and return the `payload_size`.
 Fail if payload size is less or equal to zero or if its greater than length of the buffer. */
-int get_payload_of_tcp_segment(char *buffer_segment, int buflen, char* buf_payload, int total_bytes_recived)
+int get_payload_of_tcp_packet(char *buffer_segment, int buflen, char* buf_payload, int total_bytes_recived)
 {
     int ip_offset;
     struct ip* ip_header;
@@ -78,12 +82,16 @@ int get_payload_of_tcp_segment(char *buffer_segment, int buflen, char* buf_paylo
 
 /* Receive and extract from the TCP segment the Payload.
 - Return:  `payload_size`*/
-int linesh_receive(int socketfd, char*buffer_to_store_msg, int buflen, struct sockaddr* cli_addr, socklen_t * clilen )
+int linesh_receive(int socketfd, 
+    char*buffer_to_store_msg, 
+    int buflen, 
+    struct sockaddr* cli_addr, 
+    socklen_t * clilen )
 {
     char buffer_temp[buflen];
-    int total_bytes_recived = get_tcp_segment(socketfd, buffer_temp, buflen, cli_addr, clilen );
+    int total_bytes_recived = get_tcp_packet(socketfd, buffer_temp, buflen, cli_addr, clilen );
 
-    int payload_size = get_payload_of_tcp_segment(buffer_temp, buflen, buffer_to_store_msg, total_bytes_recived);
+    int payload_size = get_payload_of_tcp_packet(buffer_temp, buflen, buffer_to_store_msg, total_bytes_recived);
     
     return payload_size;
 }
@@ -92,8 +100,8 @@ int linesh_receive(int socketfd, char*buffer_to_store_msg, int buflen, struct so
 
 /* Method that prepare the segments' linesh header. */
 void prepare_linesh_header(struct Linesh_TCP* linesh_reply,
-    uint16_t source, 
-    uint16_t dest,
+    uint16_t source_port, 
+    uint16_t dest_port,
     uint8_t  connect_req,
     uint8_t  connect_acc,
     uint8_t  final_acknow,
@@ -101,8 +109,8 @@ void prepare_linesh_header(struct Linesh_TCP* linesh_reply,
     uint16_t seq,
     uint16_t rec_seq)
 {
-    linesh_reply->source       = source;
-    linesh_reply->dest         = dest;
+    linesh_reply->source       = source_port;
+    linesh_reply->dest         = dest_port;
     linesh_reply->connect_req  = connect_req;
     linesh_reply->connect_acc  = connect_acc;
     linesh_reply->final_acknow = final_acknow;
@@ -122,19 +130,31 @@ return 1;
 
 /* This method process the 3-way-handshake for linesh tcp protocol. Returns 1 in case of success otherwise faild automatically.
 An other feature of this method is that stores the last client and server sequences in to input variables */
-int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* cli_addr, socklen_t* clilen, uint16_t* server_seq, uint16_t* cli_seq)
+int linesh_3whs_server(int socketfd, 
+    int buff_segment_length, 
+    struct sockaddr* cli_addr, 
+    socklen_t* clilen, 
+    uint16_t* server_seq, 
+    uint16_t* cli_seq)
 {
     struct ip* ip_header;
     struct Linesh_TCP * incoming_request;
     struct Linesh_TCP outgoing_reply;
     char recieve_buffer[buff_segment_length];
 
-    int segment_size = get_tcp_segment(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
+    int segment_size = get_tcp_packet(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
 
     // Get the linesh header
     ip_header = (struct ip*) recieve_buffer;
     int ip_offset = ip_header->ip_hl *4;
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
+
+    // Check the incoming sequences
+    if (check_seq(incoming_request->rec_seq, 0) == -1)
+    {
+        fail("Incompatible sequence recived");
+    }
+    
 
     // get sequence from cli
     *cli_seq =  incoming_request->seq + 1;
@@ -175,8 +195,18 @@ int linesh_3whs_server(int socketfd, int buff_segment_length, struct sockaddr* c
 return 1;
 }
 
+
+
+
+
 /* This method send a package/segment that includes a payload of chars.*/
-int linesh_send(int socketfd, const char *msg_payload, int payload_length, struct sockaddr* dest_addr, socklen_t dest_len, uint16_t current_seq, uint16_t current_rec_seq)
+int linesh_send(int socketfd, 
+    const char *msg_payload, 
+    int payload_length, 
+    struct sockaddr* dest_addr, 
+    socklen_t dest_len, 
+    uint16_t current_seq, 
+    uint16_t current_rec_seq)
 {
     int total_packet_size = sizeof(struct Linesh_TCP) + payload_length;
     struct Linesh_TCP outgoing_header;
@@ -194,4 +224,65 @@ int linesh_send(int socketfd, const char *msg_payload, int payload_length, struc
     }
 
 return 1;
+}
+
+
+
+int linesh_3whs_client(int socketfd, 
+int buff_len,
+struct sockaddr*  server_addr,
+socklen_t* server_len,
+uint16_t* server_seq,
+uint16_t *client_seq
+)
+{
+    struct ip* ip_header;
+    struct Linesh_TCP outgoing_packet;
+    struct Linesh_TCP *incoming_packet;
+    char buff_temp[buff_len];
+
+
+    // Send connection recquest to the server
+    *client_seq = (uint16_t) rand();
+    *server_seq = 0; 
+
+    prepare_linesh_header(&outgoing_packet, CLIENT_PORT, SERVER_PORT, 1, 0, 0, 0, *client_seq, *server_seq);
+    
+    if(sendto(socketfd, &outgoing_packet, sizeof(struct Linesh_TCP),  0,  server_addr, server_len) == -1)
+    {
+        fail_errno("Submition request to server has failed");
+    }
+    
+    //  RECIEVE & ANALYZE REQUEST ------------------------
+    int packet_size = get_tcp_packet(socketfd, buff_temp, buff_len, server_addr, server_len);
+    
+    // Get the header
+    ip_header = (struct ip*) buff_temp;
+    int ip_offset =  ip_header->ip_hl*4;
+    incoming_packet = (struct Linesh_TCP*)(buff_temp + ip_offset);
+
+    // Check if server has accepted the connection
+    if(check_seq(incoming_packet->rec_seq, *client_seq+1) != 1)
+    {
+        fail("Inconsisten sequence: Packet refused. \n Connectio closed.");
+    }
+
+    if (incoming_packet->connect_acc != 1)
+    {
+        fail("Connection request refused");
+    }
+    
+
+    // SEND FINAL SYN-ACK -----------------------------------
+    (*client_seq)++; // update sequence
+    *server_seq = incoming_packet->seq + 1;
+    
+    prepare_linesh_header(&outgoing_packet, CLIENT_PORT, SERVER_PORT, 0, 0, 1, 0, *client_seq,  *server_seq );
+
+    if (sendto(socketfd, &outgoing_packet,  sizeof(struct Linesh_TCP), 0, server_addr, *server_len ) == -1)
+    {
+        fail_errno("Submit the final ACK to the server has failed.");
+    }
+
+return 1;  
 }
