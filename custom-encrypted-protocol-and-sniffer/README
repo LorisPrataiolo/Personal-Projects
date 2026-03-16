@@ -62,7 +62,7 @@ struct Linesh_TCP {
 
 ## Bugs
 
-At the moment, the protocol mechanism is infected by Loopback echo. This phenomenon (that to be honest i didn't see anything on internet, this name comes from gemni pro) has the follow conseguences: When a sender sends his protocol package, and the follow step is listen the response, can happening that the sender re-takes his hown message back as response from his destinator. This as you can immagine generate a big problem during the comunication.
+At the moment, the protocol mechanism is infected by Loopback echo. This phenomenon (that to be honest i didn't see anything on internet, this name comes from gemni pro) has the follow conseguences: When a sender sends his protocol package, and the follow step is listen the response, can happening that the sender re-takes his own message back as response from his destinator. This as you can immagine generate a big problem during the comunication.
 
 ## 📚 Sources
 
