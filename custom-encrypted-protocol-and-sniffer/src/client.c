@@ -24,7 +24,7 @@ int main()
 
     server_len = sizeof(struct sockaddr_in);
 
-    printf("Start Linesh Protocol: \n Client submit request connection to the server.");
+    printf("Start Linesh Protocol: \n Client submit request connection to the server.\n");
 
     if(linesh_3whs_client(socketfd, MAX_BUFFER_LENGTH, (struct sockaddr*) &server_addr, &server_len, &server_seq, &client_seq) == 1)
     {

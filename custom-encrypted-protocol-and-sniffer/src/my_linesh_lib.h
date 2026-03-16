@@ -121,12 +121,41 @@ void prepare_linesh_header(struct Linesh_TCP* linesh_reply,
 
 int check_seq(const uint16_t rec_seq, const uint16_t expected_seq)
 {
-    if(rec_seq != expected_seq)
+    if(rec_seq != expected_seq){
         return -1;
-
+    }
 return 1;
 }
 
+void show_sequences(struct Linesh_TCP packet)
+{
+    printf("\nPACKET SEQUENCES  ----------------- +\n");
+    printf("recived: %d \n", packet.rec_seq);
+    printf("send: %d \n", packet.seq);
+    printf("-----------------------------------\n\n");
+}
+
+/* Prints the complete state of a Linesh_TCP header for debugging */
+static inline void debug_packet(const char* step_name, struct Linesh_TCP *packet, uint16_t expected_seq, uint16_t expected_rec_seq) 
+{
+    printf("\n[DEBUG] --- %s ---\n", step_name);
+    
+    // 1. Print the flags so you know what type of packet arrived
+    printf("Flags -> SYN: %d | SYN-ACK: %d | FIN-ACK: %d | DATA: %d\n", 
+           packet->connect_req, packet->connect_acc, packet->final_acknow, packet->data_flg);
+    
+    // 2. Print the Sequence Number vs what we expected
+    printf("SEQ   -> Received: %-5u | Expected: %-5u | %s\n", 
+           packet->seq, expected_seq, 
+           (packet->seq == expected_seq) ? "✅ MATCH" : "❌ FAIL");
+           
+    // 3. Print the Acknowledgment Number vs what we expected
+    printf("ACK   -> Received: %-5u | Expected: %-5u | %s\n", 
+           packet->rec_seq, expected_rec_seq, 
+           (packet->rec_seq == expected_rec_seq) ? "✅ MATCH" : "❌ FAIL");
+           
+    printf("---------------------------------------\n\n");
+}
 
 /* This method process the 3-way-handshake for linesh tcp protocol. Returns 1 in case of success otherwise faild automatically.
 An other feature of this method is that stores the last client and server sequences in to input variables */
@@ -150,6 +179,8 @@ int linesh_3whs_server(int socketfd,
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
 
     // Check the incoming sequences
+    debug_packet("SERVER RECIVED CONNECTION REQUEST", incoming_request, incoming_request->seq, incoming_request->rec_seq);
+    show_sequences(*incoming_request);
     if (check_seq(incoming_request->rec_seq, 0) == -1)
     {
         fail("Incompatible sequence recived");
@@ -163,6 +194,7 @@ int linesh_3whs_server(int socketfd,
     // Accept the connection with client -> send ACK to the client -----------------
     if(incoming_request->connect_req == 1){
         prepare_linesh_header(&outgoing_reply, SERVER_PORT, CLIENT_PORT, 0, 1, 0, 0, *server_seq, *cli_seq);
+        debug_packet("SEND ACCEPT PACKAGE", &outgoing_reply, *server_seq, incoming_request->seq + 1);
 
         if (sendto(socketfd, &outgoing_reply, sizeof(struct Linesh_TCP),  0, cli_addr, *clilen) == -1){
             close(socketfd);
@@ -182,6 +214,7 @@ int linesh_3whs_server(int socketfd,
     (*server_seq)++;
 
     // check if the sequences corresponds
+    debug_packet("SERVER: Verifying Final ACK", incoming_request, *cli_seq, *server_seq);
     if (check_seq(incoming_request->seq, *cli_seq) == -1 ||  check_seq(incoming_request->rec_seq, *server_seq) == -1){
         fail("Sequences do not corresponds");
     }
@@ -227,7 +260,6 @@ return 1;
 }
 
 
-
 int linesh_3whs_client(int socketfd, 
 int buff_len,
 struct sockaddr*  server_addr,
@@ -248,12 +280,15 @@ uint16_t *client_seq
 
     prepare_linesh_header(&outgoing_packet, CLIENT_PORT, SERVER_PORT, 1, 0, 0, 0, *client_seq, *server_seq);
     
+    printf("Send connection request\n");
     if(sendto(socketfd, &outgoing_packet, sizeof(struct Linesh_TCP),  0,  server_addr, *server_len) == -1)
     {
+        
         fail_errno("Submition request to server has failed");
     }
     
     //  RECIEVE & ANALYZE REQUEST ------------------------
+    printf("Server response recived \n");
     int packet_size = get_tcp_packet(socketfd, buff_temp, buff_len, server_addr, server_len);
     
     // Get the header
@@ -262,6 +297,7 @@ uint16_t *client_seq
     incoming_packet = (struct Linesh_TCP*)(buff_temp + ip_offset);
 
     // Check if server has accepted the connection
+    debug_packet("SERVER RESPONSE:", incoming_packet, incoming_packet->seq, *client_seq + 1);
     if(check_seq(incoming_packet->rec_seq, *client_seq+1) != 1)
     {
         fail("Inconsistent sequence: Packet refused. \n Connectio closed.");
@@ -274,11 +310,13 @@ uint16_t *client_seq
     
 
     // SEND FINAL SYN-ACK -----------------------------------
+    printf("Send final ACK\n");
     (*client_seq)++; // update sequence
     *server_seq = incoming_packet->seq + 1;
     
     prepare_linesh_header(&outgoing_packet, CLIENT_PORT, SERVER_PORT, 0, 0, 1, 0, *client_seq,  *server_seq );
 
+    show_sequences(outgoing_packet);
     if (sendto(socketfd, &outgoing_packet,  sizeof(struct Linesh_TCP), 0, server_addr, *server_len ) == -1)
     {
         fail_errno("Submit the final ACK to the server has failed.");
