@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/errno.h>
-
+#include <errno.h>
 
 
 void fail_errno(const char * const msg ) {
@@ -13,4 +12,3 @@ void fail(const char * const msg) {
     fprintf(stderr, "%s\n",msg);
     exit(EXIT_FAILURE);
 }
-

@@ -10,7 +10,6 @@
 #include <netinet/in.h>   
 #include <netinet/ip.h>
 #include "my_fail_lib.h"
-#include "my_fail_lib.h"
 
 # define MAX_BUFFER_LENGTH 15000 // bytes
 
@@ -27,6 +26,7 @@ struct Linesh_TCP {
 
 int CLIENT_PORT = 7777;
 int SERVER_PORT = 8080;
+char SERVER_ADDRESS[10]= "127.0.0.1";
 
 /* Load the entire segment into buffer_to_store_sgmnt, and return the number of bytes recived.
 Fail if the number of bytes is 0 or -1 (for more information look recvfrom method).*/
@@ -174,7 +174,7 @@ int linesh_3whs_server(int socketfd,
     // Recieve the final ACK -------------------------------------------------------
     memset(recieve_buffer,0, sizeof(struct Linesh_TCP)); // clear the recieve buffer
 
-    segment_size = get_tcp_segment(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
+    segment_size = get_tcp_packet(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
 
     ip_header = (struct ip*) recieve_buffer;
     ip_offset = ip_header->ip_hl *4;
@@ -248,7 +248,7 @@ uint16_t *client_seq
 
     prepare_linesh_header(&outgoing_packet, CLIENT_PORT, SERVER_PORT, 1, 0, 0, 0, *client_seq, *server_seq);
     
-    if(sendto(socketfd, &outgoing_packet, sizeof(struct Linesh_TCP),  0,  server_addr, server_len) == -1)
+    if(sendto(socketfd, &outgoing_packet, sizeof(struct Linesh_TCP),  0,  server_addr, *server_len) == -1)
     {
         fail_errno("Submition request to server has failed");
     }
@@ -264,7 +264,7 @@ uint16_t *client_seq
     // Check if server has accepted the connection
     if(check_seq(incoming_packet->rec_seq, *client_seq+1) != 1)
     {
-        fail("Inconsisten sequence: Packet refused. \n Connectio closed.");
+        fail("Inconsistent sequence: Packet refused. \n Connectio closed.");
     }
 
     if (incoming_packet->connect_acc != 1)

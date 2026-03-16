@@ -1,7 +1,7 @@
 #include "my_linesh_lib.h"
 
 
-int main(int argc, char const *argv[])
+int main()
 {
     int socketfd;
     char msg_buffer[MAX_BUFFER_LENGTH];
@@ -12,8 +12,11 @@ int main(int argc, char const *argv[])
     uint16_t server_seq, client_seq;
 
 
-    socketfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW); // Create Raw Socket
-
+    socketfd = socket(AF_INET, SOCK_RAW, 150); // Create Raw Socket
+    if (socketfd < 0) 
+    {
+        fail_errno("Socket creation failed (Did you forget sudo?)");
+    }
     // Server address configuration
     memset(&server, 0, sizeof(server));
     server.sin_addr.s_addr  = INADDR_ANY;
@@ -32,7 +35,7 @@ int main(int argc, char const *argv[])
 
     printf("Start Listening for a client connection...\n");
     if(linesh_3whs_server(socketfd, MAX_BUFFER_LENGTH, (struct sockaddr*) &client,  &client_size, &server_seq, &client_seq) == 1)
-        printf("Client sucessfully connect!");
+        printf("Client sucessfully connect!\n");
 
     // Communication Client - Server
     printf("Comunication started!\n");
