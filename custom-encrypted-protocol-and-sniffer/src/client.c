@@ -32,7 +32,7 @@ int main()
     }
 
     printf("Comunication started!\n");
-// Communication loop: Client <-> Server
+    // Communication loop: Client <-> Server
     while (1) 
     {
         memset(msg_buffer, 0, MAX_BUFFER_LENGTH);
@@ -47,8 +47,8 @@ int main()
 
         int payload_length = strlen(msg_buffer);
 
-        // 2. Wrap and send the message using your custom protocol
-        int payload_sent = linesh_send(socketfd, msg_buffer, payload_length, (struct sockaddr*)&server_addr, server_len, client_seq, server_seq);
+        // Wrap and send the message using your custom protocol
+        int payload_sent = linesh_send(socketfd, msg_buffer, payload_length, (struct sockaddr*)&server_addr, server_len, client_seq, server_seq, CLIENT_PORT, SERVER_PORT);
         
         if (payload_sent == -1) {
             close(socketfd);
@@ -65,9 +65,9 @@ int main()
         }
 
         // Wait for the server's acknowledgment
-        memset(msg_buffer, 0, MAX_BUFFER_LENGTH); // Clear buffer for incoming data
+        memset(msg_buffer, 0, sizeof(msg_buffer)); // Clear buffer for incoming data
         
-        int payload_received = linesh_receive(socketfd, msg_buffer, MAX_BUFFER_LENGTH, (struct sockaddr*)&server_addr, &server_len);
+        int payload_received = linesh_receive(socketfd, msg_buffer, sizeof(msg_buffer), (struct sockaddr*)&server_addr, &server_len, CLIENT_PORT);
         
         if (payload_received <= 0) {
             close(socketfd);

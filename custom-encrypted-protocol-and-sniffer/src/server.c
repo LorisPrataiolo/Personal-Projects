@@ -37,13 +37,13 @@ int main()
     if(linesh_3whs_server(socketfd, MAX_BUFFER_LENGTH, (struct sockaddr*) &client,  &client_size, &server_seq, &client_seq) == 1)
         printf("Client sucessfully connect!\n");
 
-    // Communication Client - Server
+    // Communication loop: Client <-> Server
     printf("Comunication started!\n");
     while(1)
     {
         memset(msg_buffer, 0, sizeof(msg_buffer));
 
-        int payload_received = linesh_receive(socketfd, msg_buffer, sizeof(msg_buffer), (struct sockaddr*)&client, &client_size);
+        int payload_received = linesh_receive(socketfd, msg_buffer, sizeof(msg_buffer), (struct sockaddr*)&client, &client_size, SERVER_PORT);
         
         if(payload_received <= 0){
             close(socketfd);
@@ -53,7 +53,7 @@ int main()
         // Advance client's sequence number by the amount of data we received
         client_seq += payload_received;
 
-        printf("Client message received: %s\n", msg_buffer);
+        printf("Client message received: %s\n\n\n", msg_buffer);
 
         // Check if client wants to stop the communication
         if(strcmp(stop_comunication_msg, msg_buffer) == 0){
@@ -63,7 +63,7 @@ int main()
         }
 
         // Send a received response to the client
-        int payload_sent = linesh_send(socketfd, server_recv_response, strlen(server_recv_response), (struct sockaddr*)&client, client_size, server_seq, client_seq);
+        int payload_sent = linesh_send(socketfd, server_recv_response, strlen(server_recv_response), (struct sockaddr*)&client, client_size, server_seq, client_seq, SERVER_PORT, CLIENT_PORT);
         
         if(payload_sent == -1) {
             close(socketfd);

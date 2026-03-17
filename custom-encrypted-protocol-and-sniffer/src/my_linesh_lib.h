@@ -86,13 +86,28 @@ int linesh_receive(int socketfd,
     char*buffer_to_store_msg, 
     int buflen, 
     struct sockaddr* cli_addr, 
-    socklen_t * clilen )
+    socklen_t * clilen, 
+    const int MY_PORT)
 {
     char buffer_temp[buflen];
-    int total_bytes_recived = get_tcp_packet(socketfd, buffer_temp, buflen, cli_addr, clilen );
+    struct Linesh_TCP *incoming_packet;
+    struct ip* ip_header;
+    int payload_size, ip_offset, total_bytes_received;
 
-    int payload_size = get_payload_of_tcp_packet(buffer_temp, buflen, buffer_to_store_msg, total_bytes_recived);
+    do{
+    total_bytes_received = get_tcp_packet(socketfd, buffer_temp, buflen, cli_addr, clilen );
+
+    ip_header = (struct ip*) buffer_temp;
+    ip_offset = ip_header->ip_hl * 4;
+    incoming_packet = (struct Linesh_TCP*)(buffer_temp + ip_offset);
+
+    // Calculate payload size early to check if it's empty
+    payload_size = total_bytes_received - ip_offset - sizeof(struct Linesh_TCP);
+
+    }while(incoming_packet->dest != MY_PORT || payload_size <= 0);
     
+    payload_size = get_payload_of_tcp_packet(buffer_temp, buflen, buffer_to_store_msg, total_bytes_received);
+
     return payload_size;
 }
 
@@ -127,13 +142,6 @@ int check_seq(const uint16_t rec_seq, const uint16_t expected_seq)
 return 1;
 }
 
-void show_sequences(struct Linesh_TCP packet)
-{
-    printf("\nPACKET SEQUENCES  ----------------- +\n");
-    printf("recived: %d \n", packet.rec_seq);
-    printf("send: %d \n", packet.seq);
-    printf("-----------------------------------\n\n");
-}
 
 /* Prints the complete state of a Linesh_TCP header for debugging */
 static inline void debug_packet(const char* step_name, struct Linesh_TCP *packet, uint16_t expected_seq, uint16_t expected_rec_seq) 
@@ -170,24 +178,26 @@ int linesh_3whs_server(int socketfd,
     struct Linesh_TCP * incoming_request;
     struct Linesh_TCP outgoing_reply;
     char recieve_buffer[buff_segment_length];
+    int segment_size, ip_offset;
 
-    int segment_size = get_tcp_packet(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
+    do{
+    segment_size = get_tcp_packet(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
 
     // Get the linesh header
     ip_header = (struct ip*) recieve_buffer;
-    int ip_offset = ip_header->ip_hl *4;
+    ip_offset = ip_header->ip_hl *4;
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
+    }while(incoming_request->dest != SERVER_PORT);
 
     // Check the incoming sequences
     debug_packet("SERVER RECIVED CONNECTION REQUEST", incoming_request, incoming_request->seq, incoming_request->rec_seq);
-    show_sequences(*incoming_request);
     if (check_seq(incoming_request->rec_seq, 0) == -1)
     {
         fail("Incompatible sequence recived");
     }
     
 
-    // get sequence from cli
+    // get sequence from clint
     *cli_seq =  incoming_request->seq + 1;
     *server_seq = (uint16_t)rand();
 
@@ -206,11 +216,15 @@ int linesh_3whs_server(int socketfd,
     // Recieve the final ACK -------------------------------------------------------
     memset(recieve_buffer,0, sizeof(struct Linesh_TCP)); // clear the recieve buffer
 
+    do{
     segment_size = get_tcp_packet(socketfd,  recieve_buffer, buff_segment_length, cli_addr, clilen);
 
+    
     ip_header = (struct ip*) recieve_buffer;
     ip_offset = ip_header->ip_hl *4;
     incoming_request = (struct Linesh_TCP*)(recieve_buffer + ip_offset);
+    }while(incoming_request->dest != SERVER_PORT);
+
     (*server_seq)++;
 
     // check if the sequences corresponds
@@ -239,7 +253,9 @@ int linesh_send(int socketfd,
     struct sockaddr* dest_addr, 
     socklen_t dest_len, 
     uint16_t current_seq, 
-    uint16_t current_rec_seq)
+    uint16_t current_rec_seq,
+    uint16_t source_port,
+    uint16_t dest_port)
 {
     int total_packet_size = sizeof(struct Linesh_TCP) + payload_length;
     struct Linesh_TCP outgoing_header;
@@ -247,7 +263,9 @@ int linesh_send(int socketfd,
     char packet_buffer[total_packet_size];
     memset(packet_buffer, 0 ,total_packet_size);
 
-    prepare_linesh_header(&outgoing_header, SERVER_PORT, CLIENT_PORT, 0, 0, 0, 1, current_seq, current_rec_seq);
+    prepare_linesh_header(&outgoing_header, source_port, dest_port, 0, 0, 0, 1, current_seq, current_rec_seq);
+    
+    // Assembly
     memcpy(packet_buffer, &outgoing_header, sizeof(struct Linesh_TCP)); // put the header at the buffer beginning
     memcpy(packet_buffer + sizeof(struct Linesh_TCP), msg_payload, payload_length); // put the payload immediatly after the header
 
@@ -289,12 +307,14 @@ uint16_t *client_seq
     
     //  RECIEVE & ANALYZE REQUEST ------------------------
     printf("Server response recived \n");
+    do{
     int packet_size = get_tcp_packet(socketfd, buff_temp, buff_len, server_addr, server_len);
     
     // Get the header
     ip_header = (struct ip*) buff_temp;
     int ip_offset =  ip_header->ip_hl*4;
     incoming_packet = (struct Linesh_TCP*)(buff_temp + ip_offset);
+    }while(incoming_packet->dest != CLIENT_PORT);
 
     // Check if server has accepted the connection
     debug_packet("SERVER RESPONSE:", incoming_packet, incoming_packet->seq, *client_seq + 1);
@@ -316,7 +336,6 @@ uint16_t *client_seq
     
     prepare_linesh_header(&outgoing_packet, CLIENT_PORT, SERVER_PORT, 0, 0, 1, 0, *client_seq,  *server_seq );
 
-    show_sequences(outgoing_packet);
     if (sendto(socketfd, &outgoing_packet,  sizeof(struct Linesh_TCP), 0, server_addr, *server_len ) == -1)
     {
         fail_errno("Submit the final ACK to the server has failed.");
