@@ -44,7 +44,6 @@ struct Node *search(struct RBThree *, int );
 /*=======================================*/
 // AUSILIARY METHODS
 /*=======================================*/
-void RBThreeTestBuilder(struct RBThree* );
 void printNode(struct Node* );
 void printKeyAtCertainDirection(struct Node* );
 
