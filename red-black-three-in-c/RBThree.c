@@ -65,10 +65,17 @@ int main(int argc, char const *argv[])
 
     three->rooth = &n10;
 
-    struct Node* lookedKey = malloc(sizeof(struct Node));
-    lookedKey = search(three, 13);
-    printf("Trovato");
-    printNode(lookedKey);
+    
+    struct Node newNode = 
+    {
+        .key    = 46,
+        .color  = BLACK,
+        .left   = NULL,
+        .right  = NULL,
+        .parent = NULL
+    };
+
+    insert(three, &newNode);
     return 0;
 }
 
@@ -92,11 +99,80 @@ struct Node* search (struct RBThree* three, int key)
     return currentNode;
 }
 
+int insert(struct RBThree * three, struct Node * newNode)
+{
+    if(three == NULL || newNode == NULL ) 
+    {
+        perror("Invalid input: NULL");
+        return FAILURE;
+    }
+
+    // Case: Three in empty. New node becomes the rooth
+    if(three->rooth == NULL) 
+    {
+        three->rooth = newNode;
+        three->rooth->color = BLACK;
+        return SUCCESS;
+    }
+
+    if(initialInsert(three, newNode) == FAILURE ) 
+    {
+        perror("New node initial insert: failed");
+        return FAILURE;
+    }
+
+    printNode(newNode);
+
+    return 0;
+}
+
+/*Method that process an initial insert for the new node. The node will be positioned based on its key, by
+ following the binary three logic.*/
+int initialInsert(struct RBThree * three, struct Node * newNode)
+{
+    newNode->color = RED;
+    struct Node* currentNode = three->rooth;
+
+    if(three == NULL || newNode == NULL ) 
+    {
+        perror("Invalid input: NULL");
+        return FAILURE;
+    }
+
+    while(currentNode != NULL)
+    {
+        if(newNode->key < currentNode->key){
+            if (currentNode->left == NULL)
+            {
+                currentNode->left = newNode;
+                newNode->parent = currentNode;
+                return SUCCESS;
+            }
+            currentNode = currentNode->left;
+            continue;
+        }
+
+        if(newNode->key >= currentNode->key){
+            if (currentNode->right == NULL)
+            {
+                currentNode->right = newNode;
+                newNode->parent = currentNode;
+                return SUCCESS;
+            }
+            currentNode = currentNode->right;
+            continue;
+        }
+       
+    }
+ 
+    return FAILURE;
+}
 
 /*=======================================*/
 // AUSILIARY METHODS
 /*=======================================*/
 
+/*Show node's data*/
 void printNode(struct Node* node)
 {
     if (node == NULL)
@@ -107,6 +183,8 @@ void printNode(struct Node* node)
             node->key,
             node->color == RED ? 'R' : 'B');
 
+    printf(" -parent:");
+    printKeyAtCertainDirection(node->parent);      
     printf(" -left:");
     printKeyAtCertainDirection(node->left);
     printf(" -right:");
@@ -115,6 +193,7 @@ void printNode(struct Node* node)
 
 
 }
+
 
 void printKeyAtCertainDirection(struct Node* dir) 
 {
